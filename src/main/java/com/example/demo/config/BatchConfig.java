@@ -6,6 +6,8 @@ import org.springframework.batch.core.Step;
 import org.springframework.batch.core.configuration.annotation.EnableBatchProcessing;
 import org.springframework.batch.core.configuration.annotation.JobBuilderFactory;
 import org.springframework.batch.core.configuration.annotation.StepBuilderFactory;
+import org.springframework.batch.core.job.flow.FlowExecutionStatus;
+import org.springframework.batch.core.job.flow.JobExecutionDecider;
 import org.springframework.batch.core.launch.support.RunIdIncrementer;
 import org.springframework.batch.core.step.tasklet.Tasklet;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -43,6 +45,13 @@ public class BatchConfig {
 	@Qualifier("TaskletStepListener")
 	private TaskletStepListener taskletStepListener;
 	
+	@Autowired
+	@Qualifier("RandomTasklet")
+	private Tasklet randomTasklet;
+	
+	@Autowired
+	private JobExecutionDecider sampleDecider;
+	
 	/** FirstStepを生成 */
 	@Bean
 	public Step firstStep() {
@@ -71,6 +80,16 @@ public class BatchConfig {
 				.build();
 	}
 	
+	/** RandomStepを生成 */
+	@Bean
+	public Step randomStep() {
+		
+		return stepBuilderFactory.get("RandomStep") // Builderの取得
+				.tasklet(randomTasklet) // Taskletのセット
+				.listener(taskletStepListener) // listener
+				.build(); // Stepの生成
+	}
+	
 	/** Taskletの分岐Jobを生成 */
 	@Bean
 	public Job taskletBranchJob() throws Exception {
@@ -83,6 +102,24 @@ public class BatchConfig {
 				.from(firstStep()) // Step1へ戻る
 				.on(ExitStatus.FAILED.getExitCode()) // FAILEDの場合
 				.to(failStep()) // Step3へ
+				.end() // 分岐終了
+				.build(); // Jobの生成
+	}
+	
+	/** RandomTaskletの分岐のJobを生成 */
+	@Bean
+	public Job randomTaskletBranchJob() throws Exception {
+		
+		return jobBuilderFactory.get("RandomTaskletBranchJob")
+				.incrementer(new RunIdIncrementer())
+				.start(randomStep()) // 最初のStep
+				.next(sampleDecider) // Deciderへ
+				.from(sampleDecider) // Deciderに戻る
+				.on(FlowExecutionStatus.COMPLETED.getName())
+				.to(successStep())
+				.from(sampleDecider) // Deciderに戻る
+				.on(FlowExecutionStatus.FAILED.getName())
+				.to(failStep())
 				.end() // 分岐終了
 				.build(); // Jobの生成
 	}
